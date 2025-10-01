@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { OpenAIService } from '../llm/openai.service';
 import { GeminiService } from '../llm/gemini.service';
 import { SessionService } from '../sessions/sessions.service';
+import { NormalizedError } from 'src/utils/errors';
 
 @Controller('api/compare')
 export class CompareController {
@@ -71,15 +72,23 @@ export class CompareController {
         );
       },
       error: (err) => {
-        oDone = true;
+        const e = normalizeProviderError(err, 'openai');
+
+        // Log detailed info server-side (include session for tracing)
+        console.error(`[session ${session.id}] ${e.logMessage}`);
+
+        // Send friendly error to FE
         res.write(
           `data: ${JSON.stringify({
             type: 'status',
             modelId: 'openai',
             status: 'error',
-            message: String(err),
+            message: e.userMessage,
+            statusCode: e.status,
+            code: e.code,
           })}\n\n`,
         );
+        oDone = true;
         maybeEnd();
       },
 
