@@ -18,7 +18,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:deploy": "prisma migrate deploy",
-    "start:prod": "node dist/main.js"
+    "start:prod": "node dist/main.js",
+    "deploy:prod": "npm run build && npm run start:prod" 
 
     
   },
