@@ -1,23 +1,25 @@
 'use client';
 
 /**
- * T10 — SSE Listener (Frontend)
+ * AIDifferentiator — Main Page
  *
- * Adds:
- *  - A single EventSource connection to backend SSE endpoint
- *  - Robust message handling: session | chunk | status
- *  - State updates into Zustand store (appendChunk / setStatus / setMetrics)
- *  - Careful cleanup: close previous EventSource on new run or unmount
+ * T9: UI layout with sticky prompt bar + two model columns
+ * T10: SSE listener — open a single EventSource to backend and push events into Zustand
+ * T11: Render streaming text as Markdown + show metrics after completion
  */
 
 import { FormEvent, useCallback, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import Panel from '@/components/Panel';
 import StatusBadge from '@/components/StatusBadge';
+import Metrics from '@/components/Metrics';
 import { usePlayground } from '@/store/usePlayground';
 
+// FE env var: set in .env.local → NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 export default function HomePage() {
+  // Zustand: central state/actions (from T8)
   const {
     prompt,
     setPrompt,
@@ -28,13 +30,13 @@ export default function HomePage() {
     setMetrics,
   } = usePlayground();
 
-  // Keep the active EventSource instance here so we can close it between runs
+  // Keep exactly one open EventSource per run
   const esRef = useRef<EventSource | null>(null);
 
-  // For now we store sessionId locally (MVP). You can lift to Zustand later if needed.
+  // Optional: hold sessionId for later GET /api/sessions/:id (history view)
   const sessionIdRef = useRef<string | null>(null);
 
-  // Helper: close the current EventSource safely
+  // Helper: close current EventSource if any
   const closeStream = useCallback(() => {
     if (esRef.current) {
       esRef.current.close();
@@ -42,48 +44,49 @@ export default function HomePage() {
     }
   }, []);
 
-  // Cleanup if component unmounts
+  // Cleanup on unmount (avoid dangling connections)
   useEffect(() => {
     return () => closeStream();
   }, [closeStream]);
 
-  // Submit: reset UI, flip statuses to streaming, open SSE, route events into Zustand
+  // Submit handler:
+  //  - Clear previous run
+  //  - Flip statuses to "streaming"
+  //  - Open SSE (EventSource) and route events into Zustand
   const handleSubmit = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
       if (!prompt.trim()) return;
 
-      // 1) Clear previous run so both panels start fresh
+      // 1) Fresh run
       reset();
 
-      // 2) Visual feedback immediately (SSE will drive final statuses)
+      // 2) Instant visual feedback — SSE will drive final states/metrics
       setStatus('openai', 'streaming');
       setStatus('gemini', 'streaming');
 
-      // 3) Close any previous stream to avoid duplicates/leaks
+      // 3) Ensure only one EventSource is open
       closeStream();
 
-      // 4) Build the SSE URL (encode prompt!)
+      // 4) Build SSE URL (encode prompt!)
       const url = `${BACKEND}/api/compare/stream?prompt=${encodeURIComponent(prompt)}`;
 
-      // 5) Open a single EventSource for the whole run
+      // 5) Open SSE
       const es = new EventSource(url);
       esRef.current = es;
 
-      // --- onmessage: all server events arrive here as text lines with "data: ..."
+      // All server events arrive as text lines with "data: ...".
       es.onmessage = (evt) => {
-        // Each message is a JSON string of shape:
-        // { type: 'session'|'chunk'|'status', ... }
         try {
           const payload = JSON.parse(evt.data);
 
-          // 5a) Session announcement — capture sessionId for later GET /api/sessions/:id
+          // Session announcement — useful for history fetch later
           if (payload.type === 'session') {
             sessionIdRef.current = payload.sessionId;
             return;
           }
 
-          // 5b) Streaming chunk — append it to the right model
+          // Streaming chunk — append to the correct model
           if (payload.type === 'chunk') {
             const { modelId, data } = payload as {
               modelId: 'openai' | 'gemini';
@@ -93,61 +96,67 @@ export default function HomePage() {
             return;
           }
 
-          // 5c) Status updates — "complete" (with metrics) or "error"
+          // Status updates — "complete" (with metrics) or "error"
           if (payload.type === 'status') {
-            const { modelId, status } = payload as {
+            const { modelId, status, metrics, message } = payload as {
               modelId: 'openai' | 'gemini';
               status: 'complete' | 'error';
               metrics?: { responseTimeMs: number; tokenCount: number; costUSD: number };
               message?: string;
             };
 
-            if (status === 'complete' && payload.metrics) {
-              // Fill metrics first so UI has data when status flips
-              setMetrics(modelId, payload.metrics);
+            if (status === 'complete' && metrics) {
+              // write metrics first, then flip status to complete
+              setMetrics(modelId, metrics);
               setStatus(modelId, 'complete');
             } else if (status === 'error') {
-              // Mark just this model as errored; the other may still be streaming/complete
               setStatus(modelId, 'error');
-              // Optional: append a visible error note into the text area
-              appendChunk(modelId, `\n\n[Error] ${payload.message ?? 'Provider failed'}\n`);
+              // optional: surface a small inline error note
+              appendChunk(modelId, `\n\n[Error] ${message ?? 'Provider failed'}\n`);
             }
             return;
           }
 
-          // (Optional) all-complete — server may send a final epilogue
+          // Final epilogue — safe to close
           if (payload.type === 'all-complete') {
-            // We can safely close here; setStatus already flipped both to "complete" or "error"
             closeStream();
             return;
           }
         } catch {
-          // Ignore malformed frames (defensive — should not happen)
-          return;
+          // Ignore any malformed frame (defensive)
         }
       };
 
-      // --- onerror: network/server issue (MVP: mark both errored and close)
+      // Network/server error: mark any still-streaming model as error, then close
       es.onerror = () => {
-        // If still streaming, surface an error for both models
         if (models.openai.status === 'streaming') setStatus('openai', 'error');
         if (models.gemini.status === 'streaming') setStatus('gemini', 'error');
         closeStream();
       };
     },
-    [prompt, reset, setStatus, appendChunk, setMetrics, models.openai.status, models.gemini.status, closeStream]
+    [
+      prompt,
+      reset,
+      setStatus,
+      appendChunk,
+      setMetrics,
+      models.openai.status,
+      models.gemini.status,
+      closeStream,
+    ],
   );
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20">
-      {/* Sticky top bar so users can quickly re-run */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+      {/* ───────────────────────── Sticky Prompt/Search Bar ───────────────────────── */}
+      <div className="sticky top-0 z-10 -mx-4 border-b bg-white/70 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl gap-2">
-          {/* Accessibility: label is visually hidden but still helps screen readers */}
+          {/* Accessible label (screen-reader visible) */}
           <label htmlFor="prompt" className="sr-only">
             Prompt
           </label>
 
+          {/* The “search bar” / input */}
           <input
             id="prompt"
             value={prompt}
@@ -157,6 +166,7 @@ export default function HomePage() {
             aria-label="Comparison prompt input"
           />
 
+          {/* Submit triggers the SSE flow */}
           <button
             type="submit"
             className="shrink-0 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black"
@@ -167,36 +177,56 @@ export default function HomePage() {
         </form>
       </div>
 
-      {/* Two responsive columns (OpenAI | Gemini) */}
+      {/* ───────────────────────── Two Responsive Columns ───────────────────────── */}
       <div className="mx-auto mt-6 grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+        {/* OPENAI COLUMN */}
         <Panel
           title="OpenAI (gpt-4o-mini)"
           right={<StatusBadge status={models.openai.status} />}
         >
-          {models.openai.text || (
+          {/* Streamed text rendered as Markdown (updates live as chunks append) */}
+          {models.openai.text ? (
+            <ReactMarkdown>{models.openai.text}</ReactMarkdown>
+          ) : (
             <p className="text-gray-500">
-              OpenAI output will stream here as chunks once you submit.
+              OpenAI output will stream here as Markdown once you submit.
             </p>
           )}
+
+          {/* Metrics appear only after completion */}
+          <Metrics
+            responseTimeMs={models.openai.metrics?.responseTimeMs}
+            tokenCount={models.openai.metrics?.tokenCount}
+            costUSD={models.openai.metrics?.costUSD}
+          />
         </Panel>
 
+        {/* GEMINI COLUMN */}
         <Panel
           title="Gemini (gemini-2.5-flash)"
           right={<StatusBadge status={models.gemini.status} />}
         >
-          {models.gemini.text || (
+          {models.gemini.text ? (
+            <ReactMarkdown>{models.gemini.text}</ReactMarkdown>
+          ) : (
             <p className="text-gray-500">
-              Gemini output will stream here as chunks once you submit.
+              Gemini output will stream here as Markdown once you submit.
             </p>
           )}
+
+          <Metrics
+            responseTimeMs={models.gemini.metrics?.responseTimeMs}
+            tokenCount={models.gemini.metrics?.tokenCount}
+            costUSD={models.gemini.metrics?.costUSD}
+          />
         </Panel>
       </div>
 
-      {/* Helper text */}
+      {/* Small helper note for devs/testers */}
       <div className="mx-auto mt-6 max-w-5xl text-xs text-gray-500">
         <p>
-          Tip: Open DevTools → Network → find the request of type <code>event-stream</code>. You’ll see
-          <code>session</code>, <code>chunk</code>, and <code>status</code> events arriving live.
+          Tip: DevTools → Network → find the <code>event-stream</code> request to watch{' '}
+          <code>session</code>, <code>chunk</code>, and <code>status</code> events arrive live.
         </p>
       </div>
     </main>
