@@ -60,6 +60,7 @@ export default function HomePage() {
 
       // 1) Fresh run
       reset();
+      setPrompt("");
 
       // 2) Instant visual feedback — SSE will drive final states/metrics
       setStatus('openai', 'streaming');
@@ -149,7 +150,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20">
       {/* ───────────────────────── Sticky Prompt/Search Bar ───────────────────────── */}
-      <div className="sticky top-0 z-10 -mx-4 border-b bg-white/70 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-black/60">
         <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl gap-2">
           {/* Accessible label (screen-reader visible) */}
           <label htmlFor="prompt" className="sr-only">
@@ -169,7 +170,7 @@ export default function HomePage() {
           {/* Submit triggers the SSE flow */}
           <button
             type="submit"
-            className="shrink-0 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black"
+            className="shrink-0 border rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black"
             aria-label="Submit prompt"
           >
             Submit
@@ -178,57 +179,52 @@ export default function HomePage() {
       </div>
 
       {/* ───────────────────────── Two Responsive Columns ───────────────────────── */}
-      <div className="mx-auto mt-6 grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
-        {/* OPENAI COLUMN */}
-        <Panel
-          title="OpenAI (gpt-4o-mini)"
-          right={<StatusBadge status={models.openai.status} />}
-        >
-          {/* Streamed text rendered as Markdown (updates live as chunks append) */}
-          {models.openai.text ? (
-            <ReactMarkdown>{models.openai.text}</ReactMarkdown>
-          ) : (
-            <p className="text-gray-500">
-              OpenAI output will stream here as Markdown once you submit.
-            </p>
-          )}
-
-          {/* Metrics appear only after completion */}
-          <Metrics
-            responseTimeMs={models.openai.metrics?.responseTimeMs}
-            tokenCount={models.openai.metrics?.tokenCount}
-            costUSD={models.openai.metrics?.costUSD}
-          />
-        </Panel>
-
-        {/* GEMINI COLUMN */}
-        <Panel
-          title="Gemini (gemini-2.5-flash)"
-          right={<StatusBadge status={models.gemini.status} />}
-        >
-          {models.gemini.text ? (
-            <ReactMarkdown>{models.gemini.text}</ReactMarkdown>
-          ) : (
-            <p className="text-gray-500">
-              Gemini output will stream here as Markdown once you submit.
-            </p>
-          )}
-
-          <Metrics
-            responseTimeMs={models.gemini.metrics?.responseTimeMs}
-            tokenCount={models.gemini.metrics?.tokenCount}
-            costUSD={models.gemini.metrics?.costUSD}
-          />
-        </Panel>
-      </div>
-
-      {/* Small helper note for devs/testers */}
-      <div className="mx-auto mt-6 max-w-5xl text-xs text-gray-500">
-        <p>
-          Tip: DevTools → Network → find the <code>event-stream</code> request to watch{' '}
-          <code>session</code>, <code>chunk</code>, and <code>status</code> events arrive live.
+     <div className="mx-auto mt-6 grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+  {/* OPENAI COLUMN: panel + metrics stacked */}
+  <div className="flex flex-col gap-2">
+    <Panel
+      title="OpenAI (gpt-4o-mini)"
+      right={<StatusBadge status={models.openai.status} />}
+    >
+      {models.openai.text ? (
+        <ReactMarkdown>{models.openai.text}</ReactMarkdown>
+      ) : (
+        <p className="text-gray-500">
+          OpenAI output will stream here as Markdown once you submit.
         </p>
-      </div>
+      )}
+    </Panel>
+
+    <Metrics
+      responseTimeMs={models.openai.metrics?.responseTimeMs}
+      tokenCount={models.openai.metrics?.tokenCount}
+      costUSD={models.openai.metrics?.costUSD}
+    />
+  </div>
+
+  {/* GEMINI COLUMN: panel + metrics stacked */}
+  <div className="flex flex-col gap-2">
+    <Panel
+      title="Gemini (gemini-2.5-flash)"
+      right={<StatusBadge status={models.gemini.status} />}
+    >
+      {models.gemini.text ? (
+        <ReactMarkdown>{models.gemini.text}</ReactMarkdown>
+      ) : (
+        <p className="text-gray-500">
+          Gemini output will stream here as Markdown once you submit.
+        </p>
+      )}
+    </Panel>
+
+    <Metrics
+      responseTimeMs={models.gemini.metrics?.responseTimeMs}
+      tokenCount={models.gemini.metrics?.tokenCount}
+      costUSD={models.gemini.metrics?.costUSD}
+    />
+  </div>
+</div>
+
     </main>
   );
 }
