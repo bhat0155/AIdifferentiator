@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config'; // Import ConfigModule
+import { PrismaModule } from 'prisma/prisma.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -12,6 +14,8 @@ import { ConfigModule } from '@nestjs/config'; // Import ConfigModule
       envFilePath: '.env.example',
       isGlobal: true, // Makes the variables available everywhere
     }),
+    PrismaModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

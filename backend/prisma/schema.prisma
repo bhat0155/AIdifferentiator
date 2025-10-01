@@ -15,7 +15,7 @@ datasource db {
 
 model ComparisonSession {
   id String  @id @default(cuid())
-  userId String
+  userId String?
   prompt String
   createdAt DateTime      @default(now())
   results ModelResult[]
