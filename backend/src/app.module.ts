@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config'; // Import ConfigModule
 import { PrismaModule } from 'prisma/prisma.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { LlmModule } from './llm/llm.module';
+import { CompareModule } from './compare/compare.modules';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { LlmModule } from './llm/llm.module';
     PrismaModule,
     SessionsModule,
     LlmModule,
+    CompareModule,
   ],
   controllers: [AppController],
   providers: [AppService],
