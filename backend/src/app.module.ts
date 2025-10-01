@@ -6,6 +6,7 @@ import { PrismaModule } from 'prisma/prisma.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { LlmModule } from './llm/llm.module';
 import { CompareModule } from './compare/compare.modules';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CompareModule } from './compare/compare.modules';
     SessionsModule,
     LlmModule,
     CompareModule,
+    HealthController,
   ],
   controllers: [AppController],
   providers: [AppService],
