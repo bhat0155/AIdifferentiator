@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { OpenAIService } from '../llm/openai.service';
 import { GeminiService } from '../llm/gemini.service';
 import { SessionService } from '../sessions/sessions.service';
-import { NormalizedError } from 'src/utils/errors';
+import { normalizeProviderError } from 'src/utils/errors';
 
 @Controller('api/compare')
 export class CompareController {
@@ -141,15 +141,21 @@ export class CompareController {
         );
       },
       error: (err) => {
-        gDone = true;
+        const e = normalizeProviderError(err, 'google');
+
+        console.error(`[session ${session.id}] ${e.logMessage}`);
+
         res.write(
           `data: ${JSON.stringify({
             type: 'status',
             modelId: 'gemini',
             status: 'error',
-            message: String(err),
+            message: e.userMessage,
+            statusCode: e.status,
+            code: e.code,
           })}\n\n`,
         );
+        gDone = true;
         maybeEnd();
       },
       complete: async () => {
