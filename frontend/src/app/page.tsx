@@ -111,9 +111,14 @@ export default function HomePage() {
               setMetrics(modelId, metrics);
               setStatus(modelId, 'complete');
             } else if (status === 'error') {
-              setStatus(modelId, 'error');
-              // optional: surface a small inline error note
-              appendChunk(modelId, `\n\n[Error] ${message ?? 'Provider failed'}\n`);
+             setStatus(modelId, 'error');
+
+  // Use the normalized, friendly message sent by the backend
+  const nice = typeof message === 'string' && message.length
+    ? message
+    : 'This provider could not complete your request.';
+
+  appendChunk(modelId, `\n\n⚠️ ${nice}\n`);
             }
             return;
           }
