@@ -1,58 +1,147 @@
 'use client';
 
 /**
- * T9 — UI Layout & Prompt Interaction (no SSE yet)
+ * T10 — SSE Listener (Frontend)
  *
- * This page provides:
- *  - Sticky prompt bar at the top with input + submit
- *  - Two responsive columns (OpenAI | Gemini) each with a status badge
- *  - Hooks into the Zustand store to read prompt and statuses
- *
- * NOTE:
- *  - We call reset() and setStatus() on submit for visual feedback now.
- *  - In T10, we'll open EventSource and update text/metrics live.
+ * Adds:
+ *  - A single EventSource connection to backend SSE endpoint
+ *  - Robust message handling: session | chunk | status
+ *  - State updates into Zustand store (appendChunk / setStatus / setMetrics)
+ *  - Careful cleanup: close previous EventSource on new run or unmount
  */
 
-import { FormEvent, useCallback } from 'react';
+import { FormEvent, useCallback, useEffect, useRef } from 'react';
 import Panel from '@/components/Panel';
 import StatusBadge from '@/components/StatusBadge';
 import { usePlayground } from '@/store/usePlayground';
 
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 export default function HomePage() {
-  // Pull state/actions from global store (created in T8)
   const {
     prompt,
     setPrompt,
     reset,
     models,
+    appendChunk,
     setStatus,
+    setMetrics,
   } = usePlayground();
 
-  // Submit handler (UI-only in T9; real SSE wiring arrives in T10)
+  // Keep the active EventSource instance here so we can close it between runs
+  const esRef = useRef<EventSource | null>(null);
+
+  // For now we store sessionId locally (MVP). You can lift to Zustand later if needed.
+  const sessionIdRef = useRef<string | null>(null);
+
+  // Helper: close the current EventSource safely
+  const closeStream = useCallback(() => {
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
+    }
+  }, []);
+
+  // Cleanup if component unmounts
+  useEffect(() => {
+    return () => closeStream();
+  }, [closeStream]);
+
+  // Submit: reset UI, flip statuses to streaming, open SSE, route events into Zustand
   const handleSubmit = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
-
-      // Guard: empty prompt — keep it minimal for MVP
       if (!prompt.trim()) return;
 
-      // 1) Clear any previous run (so panels start fresh)
+      // 1) Clear previous run so both panels start fresh
       reset();
 
-      // 2) Flip both models to "streaming" to indicate progress
-      //    (In T10 the SSE messages will drive these updates)
+      // 2) Visual feedback immediately (SSE will drive final statuses)
       setStatus('openai', 'streaming');
       setStatus('gemini', 'streaming');
 
-      // 3) T10 — Open EventSource here and pipe events -> Zustand actions
+      // 3) Close any previous stream to avoid duplicates/leaks
+      closeStream();
+
+      // 4) Build the SSE URL (encode prompt!)
+      const url = `${BACKEND}/api/compare/stream?prompt=${encodeURIComponent(prompt)}`;
+
+      // 5) Open a single EventSource for the whole run
+      const es = new EventSource(url);
+      esRef.current = es;
+
+      // --- onmessage: all server events arrive here as text lines with "data: ..."
+      es.onmessage = (evt) => {
+        // Each message is a JSON string of shape:
+        // { type: 'session'|'chunk'|'status', ... }
+        try {
+          const payload = JSON.parse(evt.data);
+
+          // 5a) Session announcement — capture sessionId for later GET /api/sessions/:id
+          if (payload.type === 'session') {
+            sessionIdRef.current = payload.sessionId;
+            return;
+          }
+
+          // 5b) Streaming chunk — append it to the right model
+          if (payload.type === 'chunk') {
+            const { modelId, data } = payload as {
+              modelId: 'openai' | 'gemini';
+              data: string;
+            };
+            appendChunk(modelId, data);
+            return;
+          }
+
+          // 5c) Status updates — "complete" (with metrics) or "error"
+          if (payload.type === 'status') {
+            const { modelId, status } = payload as {
+              modelId: 'openai' | 'gemini';
+              status: 'complete' | 'error';
+              metrics?: { responseTimeMs: number; tokenCount: number; costUSD: number };
+              message?: string;
+            };
+
+            if (status === 'complete' && payload.metrics) {
+              // Fill metrics first so UI has data when status flips
+              setMetrics(modelId, payload.metrics);
+              setStatus(modelId, 'complete');
+            } else if (status === 'error') {
+              // Mark just this model as errored; the other may still be streaming/complete
+              setStatus(modelId, 'error');
+              // Optional: append a visible error note into the text area
+              appendChunk(modelId, `\n\n[Error] ${payload.message ?? 'Provider failed'}\n`);
+            }
+            return;
+          }
+
+          // (Optional) all-complete — server may send a final epilogue
+          if (payload.type === 'all-complete') {
+            // We can safely close here; setStatus already flipped both to "complete" or "error"
+            closeStream();
+            return;
+          }
+        } catch {
+          // Ignore malformed frames (defensive — should not happen)
+          return;
+        }
+      };
+
+      // --- onerror: network/server issue (MVP: mark both errored and close)
+      es.onerror = () => {
+        // If still streaming, surface an error for both models
+        if (models.openai.status === 'streaming') setStatus('openai', 'error');
+        if (models.gemini.status === 'streaming') setStatus('gemini', 'error');
+        closeStream();
+      };
     },
-    [prompt, reset, setStatus]
+    [prompt, reset, setStatus, appendChunk, setMetrics, models.openai.status, models.gemini.status, closeStream]
   );
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20">
       {/* Sticky top bar so users can quickly re-run */}
-      <div className="sticky top-0 z-10 -mx-4  px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-black/60">
         <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl gap-2">
           {/* Accessibility: label is visually hidden but still helps screen readers */}
           <label htmlFor="prompt" className="sr-only">
@@ -78,41 +167,36 @@ export default function HomePage() {
         </form>
       </div>
 
-      {/* Two responsive columns.
-         - On mobile: they stack (1 column)
-         - On md+ screens: two columns side-by-side */}
+      {/* Two responsive columns (OpenAI | Gemini) */}
       <div className="mx-auto mt-6 grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
-        {/* OPENAI COLUMN */}
         <Panel
           title="OpenAI (gpt-4o-mini)"
           right={<StatusBadge status={models.openai.status} />}
         >
-          {/* T9: show placeholder (no SSE yet). T10 will stream into models.openai.text */}
           {models.openai.text || (
             <p className="text-gray-500">
-              OpenAI output will stream here once you submit (wired in T10).
+              OpenAI output will stream here as chunks once you submit.
             </p>
           )}
         </Panel>
 
-        {/* GEMINI COLUMN */}
         <Panel
           title="Gemini (gemini-2.5-flash)"
           right={<StatusBadge status={models.gemini.status} />}
         >
           {models.gemini.text || (
             <p className="text-gray-500">
-              Gemini output will stream here once you submit (wired in T10).
+              Gemini output will stream here as chunks once you submit.
             </p>
           )}
         </Panel>
       </div>
 
-      {/* Small helper text — explains what's next */}
+      {/* Helper text */}
       <div className="mx-auto mt-6 max-w-5xl text-xs text-gray-500">
         <p>
-          Tip: After clicking <strong>Submit</strong>, both models switch to <em>streaming</em>.
-          In <strong>T10</strong> we’ll wire the real SSE stream so content appears live here.
+          Tip: Open DevTools → Network → find the request of type <code>event-stream</code>. You’ll see
+          <code>session</code>, <code>chunk</code>, and <code>status</code> events arriving live.
         </p>
       </div>
     </main>
