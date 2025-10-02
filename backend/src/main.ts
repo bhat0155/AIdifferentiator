@@ -14,8 +14,10 @@ async function bootstrap() {
     configService.get<string>('CORS_ORIGIN') || 'http://localhost:3000';
 
   // --- CORS Configuration ---
+  // main.ts
+
   app.enableCors({
-    origin: corsOrigin, // Explicitly allow requests from the frontend URL
+    origin: true, // ✅ allow all origins (the server reflects the Origin header)
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
