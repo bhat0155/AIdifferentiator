@@ -16,7 +16,7 @@ The app displays:
 
 ## 🚀 Live Demo
 
-- **Frontend (Next.js on Vercel)** → https://aidifferentiator.vercel.app  
+- **Frontend (Next.js on Vercel)** → https://a-idifferentiator.vercel.app  
 - **Backend (NestJS on Render)** → https://aidifferentiator-backend.onrender.com  
 - Example Health Check → https://aidifferentiator-backend.onrender.com/health  
 
