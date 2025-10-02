@@ -30,9 +30,9 @@ async function bootstrap() {
     }),
   );
 
-  const port = configService.get<number>('PORT');
-
-  await app.listen(port || 3001); // Default to 3001 if reading fails
+  const port =
+    Number(process.env.PORT) || configService.get<number>('PORT') || 3001;
+  await app.listen(port);
 
   console.log(`CORS enabled for origin: ${corsOrigin}`);
   console.log(`🚀 Backend is running on: http://localhost:${port || 3001}`);
