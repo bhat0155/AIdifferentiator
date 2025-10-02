@@ -1,29 +1,34 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config'; // Import ConfigModule
-import { PrismaModule } from 'prisma/prisma.module';
+import { PrismaModule } from './prisma/prisma.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { LlmModule } from './llm/llm.module';
-import { CompareModule } from './compare/compare.modules';
+import { CompareModule } from './compare/compare.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
-    // Add the ConfigModule to the imports array.
-    // We use .env.example for defining the variables,
-    // but in a real app, developers would copy this to .env (which is ignored by git).
+    // Only @Module() classes here
     ConfigModule.forRoot({
-      envFilePath: '.env.example',
-      isGlobal: true, // Makes the variables available everywhere
+      isGlobal: true, // load env from process.env
+      // For local-only you could set envFilePath: '.env'
     }),
     PrismaModule,
     SessionsModule,
     LlmModule,
     CompareModule,
+  ],
+  controllers: [
+    // All @Controller() classes here
+    AppController,
     HealthController,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    // All @Injectable() providers here
+    AppService,
+  ],
 })
 export class AppModule {}
