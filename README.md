@@ -10,6 +10,7 @@ The app displays:
   - ⏱️ Response time (ms)  
   - 🔢 Token count (approx)  
   - 💲 Cost estimate  
+- ℹ️ Metrics are heuristic estimates meant for comparison only (not billing-accurate).  
 - Responses stored in a shared **PostgreSQL database**  
 
 ---
