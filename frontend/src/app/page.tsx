@@ -155,7 +155,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20">
       {/* ───────────────────────── Sticky Prompt/Search Bar ───────────────────────── */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+      <div className="sticky top-0 z-10 -mx-4 px-4 py-3 backdrop-blur supports-[backdrop-filter]">
         <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl gap-2">
           {/* Accessible label (screen-reader visible) */}
           <label htmlFor="prompt" className="sr-only">
